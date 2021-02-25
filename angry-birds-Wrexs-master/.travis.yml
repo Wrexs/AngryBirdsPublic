@@ -1,0 +1,126 @@
+# .travis.yml
+
+os: linux
+language: cpp
+git:
+  depth: 5
+
+cache:
+  - directories:
+      - ~/.cache/apt # This must be accessible for non-root users
+
+jobs:
+  include:
+
+    # Code Style
+    - os: linux
+      name: "CODE::STYLE"
+      dist: bionic
+      compiler: clang-format-10
+      addons:
+        apt:
+          sources:
+            - sourceline: 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main'
+              key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+          packages:
+            - clang-format-10
+      env:
+        - MATRIX_EVAL="CC=clang && CXX=clang++"
+
+      before_install:
+       - chmod +x ${TRAVIS_BUILD_DIR}/.travis.cache && sudo ${TRAVIS_BUILD_DIR}/.travis.cache --load
+
+      install:
+        - ${TRAVIS_BUILD_DIR}/.travis.cache --save
+
+      before_script:
+        - wget https://raw.githubusercontent.com/Sarcasm/run-clang-format/master/run-clang-format.py
+        - chmod +x run-clang-format.py
+
+      script:
+        - ./run-clang-format.py --clang-format-executable /usr/bin/clang-format-10 -r src
+
+    # Code Quality
+    - os: linux
+      name: "CODE::QUALITY"
+      dist: bionic
+      compiler: clang-10
+      addons:
+        apt:
+          sources:
+            - sourceline: 'ppa:ubuntu-toolchain-r/test'
+            - sourceline: 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main'
+              key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+          packages:
+            - clang-10
+      env:
+        - MATRIX_EVAL="CC=clang && CXX=clang++"
+
+      before_install:
+        - sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-10 100
+        - sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-10 100
+        - chmod +x ${TRAVIS_BUILD_DIR}/.travis.cache && sudo ${TRAVIS_BUILD_DIR}/.travis.cache --load
+
+      install:
+        - sudo apt-get install -y --no-install-recommends --no-install-suggests
+          libtbb-dev libharfbuzz-bin libharfbuzz-dev libxrandr-dev
+          libxi-dev libxinerama-dev libxcursor-dev libgl1-mesa-dev
+          libglu1-mesa-dev cppcheck
+        - eval "$(curl -sL https://raw.githubusercontent.com/ryuichis/oclint-cpp-travis-ci-examples/master/oclint-ci-install.sh)"
+        - ${TRAVIS_BUILD_DIR}/.travis.cache --save
+
+      before_script:
+        - cmake -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -H. -Bbuild
+
+      script:
+        - /usr/bin/cppcheck --quiet
+          --enable=style,performance,portability,missingInclude
+          --error-exitcode=1 --force  --inline-suppr --suppressions-list=.cppcheck
+          --platform=unix64 --std=c++14 --language=c++ -I src main.cpp src/*
+        - oclint-json-compilation-database
+          -e Libs -e _deps -e external/asge/include/Engine
+          -enable-clang-static-analyzer -p ./build
+
+    # Linux GCC Build
+    - os: linux
+      name: "CODE::BUILD"
+      dist: bionic
+      compiler: clang-9
+      addons:
+        apt:
+          sources:
+            - sourceline: 'ppa:ubuntu-toolchain-r/test'
+            - sourceline: 'deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main'
+              key_url: 'https://apt.llvm.org/llvm-snapshot.gpg.key'
+          packages:
+            - clang-9
+            - gcc-9
+            - g++-9
+      env:
+        - MATRIX_EVAL="CC=clang-9 && CXX=/usr/bin/clang++-9"
+        - CC=clang-9
+        - CXX=clang++-9
+
+      before_install:
+        - sudo update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 100
+        - sudo update-alternatives --install /usr/bin/g++ g++ /usr/bin/g++-9 100
+        - sudo update-alternatives --install /usr/bin/clang clang /usr/bin/clang-9 100
+        - sudo update-alternatives --install /usr/bin/clang++ clang++ /usr/bin/clang++-9 100
+        - chmod +x ${TRAVIS_BUILD_DIR}/.travis.cache && sudo ${TRAVIS_BUILD_DIR}/.travis.cache --load
+
+      install:
+        - sudo apt-get install -y --no-install-recommends --no-install-suggests
+          libtbb-dev libharfbuzz-bin libharfbuzz-dev libxrandr-dev
+          libxi-dev libxinerama-dev libxcursor-dev libgl1-mesa-dev libglu1-mesa-dev
+        - ${TRAVIS_BUILD_DIR}/.travis.cache --save
+
+      before_script:
+        - cmake -H. -Bbuild
+
+      script:
+        - cmake --build build
+
+before_install:
+  - eval "${MATRIX_EVAL}"
+
+
